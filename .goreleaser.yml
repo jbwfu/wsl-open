@@ -1,0 +1,55 @@
+project_name: wsl-open
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  -
+    id: wsl-open
+    main: ./main.go
+    binary: wsl-open
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  -
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format: tar.gz
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+release:
+  prerelease: auto
+
+changelog:
+  use: git
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: "Bug fixes"
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: "Optimize"
+      regexp: '^.*?optimize(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: "Docs"
+      regexp: ".*docs.*"
+      order: 3
+    - title: "CI"
+      regexp: '(.*build.*)|(^ci(\([[:word:]]+\))??!?:.+$)'
+      order: 4
+    - title: Others
+      order: 999
