@@ -6,6 +6,8 @@
 [![Latest release](https://img.shields.io/github/v/release/jbwfu/wsl-open)](https://github.com/jbwfu/wsl-open/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+[**简体中文**](./README_zh-CN.md)
+
 A simple, fast, and robust utility to open files, directories,
 and URLs from WSL in their default Windows applications.
 
