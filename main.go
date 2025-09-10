@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -9,49 +10,57 @@ import (
 )
 
 func toWindowsPath(path string) (string, error) {
-	cmd := exec.Command("wslpath", "-w", path)
+	wslpath, err := exec.LookPath("wslpath")
+	if err != nil {
+		return "", errors.New("command 'wslpath' not found in your PATH. Please ensure WSL is installed correctly")
+	}
+	cmd := exec.Command(wslpath, "-w", path)
 	output, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("failed to execute 'wslpath' command. Is it in your PATH? Error: %w", err)
+		return "", fmt.Errorf("wslpath failed to convert '%s' to a Windows path: %w", path, err)
 	}
 	return strings.TrimSpace(string(output)), nil
 }
 
 func toWslPath(path string) (string, error) {
-	cmd := exec.Command("wslpath", "-u", path)
+	wslpath, err := exec.LookPath("wslpath")
+	if err != nil {
+		return "", errors.New("command 'wslpath' not found in your PATH. Please ensure WSL is installed correctly")
+	}
+	cmd := exec.Command(wslpath, "-u", path)
 	output, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("failed to execute 'wslpath' command. Is it in your PATH? Error: %w", err)
+		return "", fmt.Errorf("wslpath failed to convert '%s' to a WSL path: %w", path, err)
 	}
 	return strings.TrimSpace(string(output)), nil
 }
 
-func getStartCmdPath(quiet bool) (string, error) {
+func getStartCmdPath() (string, error) {
 	path, err := exec.LookPath("powershell.exe")
 	if err == nil {
 		return path, nil
 	}
 
-	if !quiet {
-		fmt.Fprintln(os.Stderr, "Info: 'powershell.exe' not found in PATH. Falling back to default known location.")
+	systemRoot := os.Getenv("SystemRoot")
+	if systemRoot == "" {
+		systemRoot = "C:\\Windows"
 	}
 
-	defaultPath := "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+	defaultPath := systemRoot + "\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
 	return toWslPath(defaultPath)
 }
 
-func main() {
-	var quiet bool
-	var dryRun bool
-	flag.BoolVar(&quiet, "q", false, "Enable quiet mode, suppressing informational output.")
-	flag.BoolVar(&dryRun, "x", false, "Perform a dry run, printing the command without executing it.")
-	flag.Parse()
+func run(args []string) error {
+	fs := flag.NewFlagSet(args[0], flag.ExitOnError)
+	quiet := fs.Bool("q", false, "Enable quiet mode, suppressing informational output.")
+	dryRun := fs.Bool("x", false, "Perform a dry run, printing the command without executing it.")
 
-	if flag.NArg() != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: %s [-q] [-x] <URL_or_FILE_PATH>\n", os.Args[0])
-		os.Exit(1)
+	fs.Parse(args[1:])
+	if fs.NArg() != 1 {
+		fs.Usage()
+		return fmt.Errorf("invalid arguments: exactly one URL or file path is required")
 	}
-	input := flag.Arg(0)
+	input := fs.Arg(0)
 
 	var target string
 	var err error
@@ -61,36 +70,42 @@ func main() {
 	} else {
 		target, err = toWindowsPath(input)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: Failed to convert WSL path: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to convert WSL path '%s': %w", input, err)
 		}
 	}
 
-	psExePath, err := getStartCmdPath(quiet)
+	psExePath, err := getStartCmdPath()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Could not locate powershell.exe: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("could not locate powershell.exe: %w", err)
 	}
 
-	cmd := exec.Command(psExePath, "start", "\""+target+"\"")
-	cmd.Dir, err = toWslPath("C:\\")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Unable to locate a non-UNC path as the execution path")
-	}
+	sanitizedTarget := strings.ReplaceAll(target, "'", "''")
+	command := fmt.Sprintf("Start-Process -FilePath '%s'", sanitizedTarget)
+	cmd := exec.Command(psExePath, "-Command", command)
 
-	if dryRun {
+	if *dryRun {
 		fmt.Println("Dry Run: Would execute command:", cmd.String())
-		os.Exit(0)
+		return nil
 	}
 
 	output, err := cmd.CombinedOutput()
+	if err != nil {
+		if len(output) > 0 {
+			fmt.Fprintf(os.Stderr, "Command output:\n%s\n", string(output))
+		}
+		return fmt.Errorf("command execution failed for '%s': %w", target, err)
+	}
 
-	if !quiet && len(output) > 0 {
+	if !*quiet && len(output) > 0 {
 		fmt.Print(string(output))
 	}
 
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Command execution failed for '%s': %v\n", target, err)
+	return nil
+}
+
+func main() {
+	if err := run(os.Args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
