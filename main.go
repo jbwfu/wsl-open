@@ -11,7 +11,16 @@ func toWindowsPath(path string) (string, error) {
 	cmd := exec.Command("wslpath", "-w", path)
 	output, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("failed to execute 'wslpath' command. Is it installed and in your PATH? Error: %w", err)
+		return "", fmt.Errorf("failed to execute 'wslpath' command. Is it in your PATH? Error: %w", err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+func toWslPath(path string) (string, error) {
+	cmd := exec.Command("wslpath", "-u", path)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to execute 'wslpath' command. Is it in your PATH? Error: %w", err)
 	}
 	return strings.TrimSpace(string(output)), nil
 }
@@ -36,8 +45,17 @@ func main() {
 		}
 	}
 
-	cmd := exec.Command("/mnt/c/Windows/system32/cmd.exe", "/C", "start", target)
-	cmd.Dir = "/mnt/c/Windows"
+	cmdExePath, err := toWslPath("C:\\Windows\\System32\\cmd.exe")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Could not locate cmd.exe via wslpath: %v\n", err)
+		os.Exit(1)
+	}
+
+	cmd := exec.Command(cmdExePath, "/C", "start", target)
+	cmd.Dir, err = toWslPath("C:\\")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Unable to locate a non-UNC path as the execution path")
+	}
 
 	output, err := cmd.CombinedOutput()
 
