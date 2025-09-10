@@ -10,12 +10,20 @@ import (
 	"strings"
 )
 
-func toWindowsPath(path string) (string, error) {
-	wslpath, err := exec.LookPath("wslpath")
+// App holds the external dependencies for the application, allowing them to be
+// mocked during testing.
+type App struct {
+	LookPath func(string) (string, error)
+	Command  func(string, ...string) *exec.Cmd
+}
+
+// toWindowsPath converts a WSL path to its Windows equivalent by calling wslpath.
+func (app *App) toWindowsPath(path string) (string, error) {
+	wslpath, err := app.LookPath("wslpath")
 	if err != nil {
 		return "", errors.New("command 'wslpath' not found in your PATH. Please ensure WSL is installed correctly")
 	}
-	cmd := exec.Command(wslpath, "-w", path)
+	cmd := app.Command(wslpath, "-w", path)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("wslpath failed to convert '%s' to a Windows path: %w", path, err)
@@ -23,12 +31,13 @@ func toWindowsPath(path string) (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-func toWslPath(path string) (string, error) {
-	wslpath, err := exec.LookPath("wslpath")
+// toWslPath converts a Windows path to its WSL equivalent by calling wslpath.
+func (app *App) toWslPath(path string) (string, error) {
+	wslpath, err := app.LookPath("wslpath")
 	if err != nil {
 		return "", errors.New("command 'wslpath' not found in your PATH. Please ensure WSL is installed correctly")
 	}
-	cmd := exec.Command(wslpath, "-u", path)
+	cmd := app.Command(wslpath, "-u", path)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("wslpath failed to convert '%s' to a WSL path: %w", path, err)
@@ -36,8 +45,9 @@ func toWslPath(path string) (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-func getStartCmdPath() (string, error) {
-	path, err := exec.LookPath("powershell.exe")
+// getStartCmdPath locates powershell.exe.
+func (app *App) getStartCmdPath() (string, error) {
+	path, err := app.LookPath("powershell.exe")
 	if err == nil {
 		return path, nil
 	}
@@ -48,13 +58,16 @@ func getStartCmdPath() (string, error) {
 	}
 
 	defaultPath := systemRoot + "\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
-	return toWslPath(defaultPath)
+	return app.toWslPath(defaultPath)
 }
 
+// isWSL checks if the program is running inside a functional WSL environment
+// by looking for the WSL_INTEROP environment variable.
 func isWSL() bool {
 	return os.Getenv("WSL_INTEROP") != ""
 }
 
+// setupUsage configures the application's help message.
 func setupUsage(fs *flag.FlagSet) {
 	progName := filepath.Base(fs.Name())
 
@@ -80,13 +93,16 @@ func setupUsage(fs *flag.FlagSet) {
 	}
 }
 
-func run(args []string) error {
+// run executes the main application logic.
+func (app *App) run(args []string) error {
 	fs := flag.NewFlagSet(args[0], flag.ExitOnError)
 	quiet := fs.Bool("q", false, "Enable quiet mode, suppressing informational output.")
 	dryRun := fs.Bool("x", false, "Perform a dry run, printing the command without executing it.")
 	setupUsage(fs)
 
-	fs.Parse(args[1:])
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
 
 	if !isWSL() {
 		return errors.New("this tool requires a WSL environment with Windows interoperability enabled")
@@ -104,20 +120,21 @@ func run(args []string) error {
 	if strings.HasPrefix(input, "http://") || strings.HasPrefix(input, "https://") {
 		target = input
 	} else {
-		target, err = toWindowsPath(input)
+		target, err = app.toWindowsPath(input)
 		if err != nil {
 			return fmt.Errorf("failed to convert WSL path '%s': %w", input, err)
 		}
 	}
 
-	psExePath, err := getStartCmdPath()
+	psExePath, err := app.getStartCmdPath()
 	if err != nil {
 		return fmt.Errorf("could not locate powershell.exe: %w", err)
 	}
 
+	// Sanitize single quotes in the target path for PowerShell command injection safety.
 	sanitizedTarget := strings.ReplaceAll(target, "'", "''")
 	command := fmt.Sprintf("Start-Process -FilePath '%s'", sanitizedTarget)
-	cmd := exec.Command(psExePath, "-Command", command)
+	cmd := app.Command(psExePath, "-Command", command)
 
 	if *dryRun {
 		fmt.Println("Dry Run: Would execute command:", cmd.String())
@@ -140,7 +157,12 @@ func run(args []string) error {
 }
 
 func main() {
-	if err := run(os.Args); err != nil {
+	app := &App{
+		LookPath: exec.LookPath,
+		Command:  exec.Command,
+	}
+
+	if err := app.run(os.Args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
