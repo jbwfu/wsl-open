@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -50,10 +51,36 @@ func getStartCmdPath() (string, error) {
 	return toWslPath(defaultPath)
 }
 
+func setupUsage(fs *flag.FlagSet) {
+	progName := filepath.Base(fs.Name())
+
+	fs.Usage = func() {
+		output := fs.Output()
+
+		fmt.Fprintf(output, "%s - A utility to open files, directories, and URLs from WSL in Windows.\n\n", progName)
+		fmt.Fprintf(output, "USAGE:\n")
+		fmt.Fprintf(output, "    %s [OPTIONS] <URL_or_FILE_PATH>\n\n", progName)
+		fmt.Fprintf(output, "ARGUMENTS:\n")
+		fmt.Fprintf(output, "    <URL_or_FILE_PATH>\n")
+		fmt.Fprintf(output, "        The target to open. This can be a WSL path to a file or directory\n")
+		fmt.Fprintf(output, "        (e.g., './document.txt', '.') or a full URL (e.g., 'https://google.com').\n\n")
+		fmt.Fprintf(output, "OPTIONS:\n")
+		fs.PrintDefaults()
+		fmt.Fprintf(output, "\nEXAMPLES:\n")
+		fmt.Fprintf(output, "    # Open a file in its default Windows application:\n")
+		fmt.Fprintf(output, "    %s notes.txt\n\n", progName)
+		fmt.Fprintf(output, "    # Open the current directory in Windows File Explorer:\n")
+		fmt.Fprintf(output, "    %s .\n\n", progName)
+		fmt.Fprintf(output, "    # Open a URL in the default Windows browser:\n")
+		fmt.Fprintf(output, "    %s https://github.com\n", progName)
+	}
+}
+
 func run(args []string) error {
 	fs := flag.NewFlagSet(args[0], flag.ExitOnError)
 	quiet := fs.Bool("q", false, "Enable quiet mode, suppressing informational output.")
 	dryRun := fs.Bool("x", false, "Perform a dry run, printing the command without executing it.")
+	setupUsage(fs)
 
 	fs.Parse(args[1:])
 	if fs.NArg() != 1 {
