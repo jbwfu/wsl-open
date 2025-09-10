@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -25,24 +26,30 @@ func toWslPath(path string) (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-func getStartCmdPath() (string, error) {
+func getStartCmdPath(quiet bool) (string, error) {
 	path, err := exec.LookPath("powershell.exe")
 	if err == nil {
 		return path, nil
 	}
 
-	fmt.Fprintln(os.Stderr, "Info: 'powershell.exe' not found in PATH. Falling back to default known location.")
+	if !quiet {
+		fmt.Fprintln(os.Stderr, "Info: 'powershell.exe' not found in PATH. Falling back to default known location.")
+	}
 
 	defaultPath := "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
 	return toWslPath(defaultPath)
 }
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Fprintf(os.Stderr, "Usage: %s <URL_or_FILE_PATH>\n", os.Args[0])
+	var quiet bool
+	flag.BoolVar(&quiet, "q", false, "Enable quiet mode, suppressing informational output.")
+	flag.Parse()
+
+	if flag.NArg() != 1 {
+		fmt.Fprintf(os.Stderr, "Usage: %s [-q] <URL_or_FILE_PATH>\n", os.Args[0])
 		os.Exit(1)
 	}
-	input := os.Args[1]
+	input := flag.Arg(0)
 
 	var target string
 	var err error
@@ -57,7 +64,7 @@ func main() {
 		}
 	}
 
-	psExePath, err := getStartCmdPath()
+	psExePath, err := getStartCmdPath(quiet)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Could not locate powershell.exe: %v\n", err)
 		os.Exit(1)
@@ -71,7 +78,7 @@ func main() {
 
 	output, err := cmd.CombinedOutput()
 
-	if len(output) > 0 {
+	if !quiet && len(output) > 0 {
 		fmt.Print(string(output))
 	}
 
