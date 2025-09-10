@@ -42,11 +42,13 @@ func getStartCmdPath(quiet bool) (string, error) {
 
 func main() {
 	var quiet bool
+	var dryRun bool
 	flag.BoolVar(&quiet, "q", false, "Enable quiet mode, suppressing informational output.")
+	flag.BoolVar(&dryRun, "x", false, "Perform a dry run, printing the command without executing it.")
 	flag.Parse()
 
 	if flag.NArg() != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: %s [-q] <URL_or_FILE_PATH>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s [-q] [-x] <URL_or_FILE_PATH>\n", os.Args[0])
 		os.Exit(1)
 	}
 	input := flag.Arg(0)
@@ -74,6 +76,11 @@ func main() {
 	cmd.Dir, err = toWslPath("C:\\")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Unable to locate a non-UNC path as the execution path")
+	}
+
+	if dryRun {
+		fmt.Println("Dry Run: Would execute command:", cmd.String())
+		os.Exit(0)
 	}
 
 	output, err := cmd.CombinedOutput()
