@@ -25,6 +25,18 @@ func toWslPath(path string) (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
+func getStartCmdPath() (string, error) {
+	path, err := exec.LookPath("powershell.exe")
+	if err == nil {
+		return path, nil
+	}
+
+	fmt.Fprintln(os.Stderr, "Info: 'powershell.exe' not found in PATH. Falling back to default known location.")
+
+	defaultPath := "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+	return toWslPath(defaultPath)
+}
+
 func main() {
 	if len(os.Args) != 2 {
 		fmt.Fprintf(os.Stderr, "Usage: %s <URL_or_FILE_PATH>\n", os.Args[0])
@@ -45,13 +57,13 @@ func main() {
 		}
 	}
 
-	cmdExePath, err := toWslPath("C:\\Windows\\System32\\cmd.exe")
+	psExePath, err := getStartCmdPath()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Could not locate cmd.exe via wslpath: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Could not locate powershell.exe: %v\n", err)
 		os.Exit(1)
 	}
 
-	cmd := exec.Command(cmdExePath, "/C", "start", target)
+	cmd := exec.Command(psExePath, "start", "\""+target+"\"")
 	cmd.Dir, err = toWslPath("C:\\")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Unable to locate a non-UNC path as the execution path")
