@@ -51,6 +51,10 @@ func getStartCmdPath() (string, error) {
 	return toWslPath(defaultPath)
 }
 
+func isWSL() bool {
+	return os.Getenv("WSL_INTEROP") != ""
+}
+
 func setupUsage(fs *flag.FlagSet) {
 	progName := filepath.Base(fs.Name())
 
@@ -83,6 +87,11 @@ func run(args []string) error {
 	setupUsage(fs)
 
 	fs.Parse(args[1:])
+
+	if !isWSL() {
+		return errors.New("this tool requires a WSL environment with Windows interoperability enabled")
+	}
+
 	if fs.NArg() != 1 {
 		fs.Usage()
 		return fmt.Errorf("invalid arguments: exactly one URL or file path is required")
